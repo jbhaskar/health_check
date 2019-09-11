@@ -21,10 +21,11 @@ module HealthCheck
             return @app.call(env)
           end
         rescue => e
-          errors = e.message.blank? ? e.class.to_s : e.message.to_s
+          errors = { error: true }
+          errors[:msg] = e.message.blank? ? e.class.to_s : e.message.to_s
         end
-        healthy = errors.blank?
-        msg = healthy ? HealthCheck.success : "health_check failed: #{errors}"
+        healthy = errors[:error]
+        msg = healthy ? HealthCheck.success : "health_check failed: #{errors[:msg]}"
         if response_type == 'xml'
           content_type = 'text/xml'
           msg = { healthy: healthy, message: msg }.to_xml

@@ -19,75 +19,91 @@ module HealthCheck
 
     # process an array containing a list of checks
     def self.process_checks(checks, called_from_middleware = false)
-      errors = ''
+      res = { error: false }
       checks.each do |check|
         case check
           when 'and', 'site'
             # do nothing
           when "database"
-            HealthCheck::Utils.get_database_version
+            database_version = HealthCheck::Utils.get_database_version
+            res[check] = { error: database_version.blank?, version: database_version }
           when "email"
-            errors << HealthCheck::Utils.check_email
+            res = HealthCheck::Utils.check_email
+            res[check] = { error: res.present?, res: res }
           when "emailconf"
-            errors << HealthCheck::Utils.check_email if HealthCheck::Utils.mailer_configured?
+            res[check] = HealthCheck::Utils.check_email if HealthCheck::Utils.mailer_configured?
+            res[check] = { error: res.present?, res: res }
           when "migrations", "migration"
             if defined?(ActiveRecord::Migration) and ActiveRecord::Migration.respond_to?(:check_pending!)
-              # Rails 4+
               begin
-                ActiveRecord::Migration.check_pending!
+                res[check] = { error: false, pending: ActiveRecord::Migration.check_pending! }
               rescue ActiveRecord::PendingMigrationError => ex
-                  errors << ex.message
+                res[check] = { error: true, error_message: ex.message }
               end
             else
               database_version  = HealthCheck::Utils.get_database_version
               migration_version = HealthCheck::Utils.get_migration_version
               if database_version.to_i != migration_version.to_i
-                errors << "Current database version (#{database_version}) does not match latest migration (#{migration_version}). "
+                res[check] = {
+                  error: true,
+                  database_version: database_version,
+                  migration_version: migration_version,
+                  error_message: "Current database version (#{database_version}) does not match latest migration (#{migration_version}). "
+                }
               end
             end
+          when 'env'
+            res[check] = HealthCheck::EnvCheck.check
           when 'cache'
-            errors << HealthCheck::Utils.check_cache
+            res[check] = HealthCheck::Utils.check_cache
           when 'resque-redis-if-present'
-            errors << HealthCheck::ResqueHealthCheck.check if defined?(::Resque)
+            res[check] = HealthCheck::ResqueHealthCheck.check if defined?(::Resque)
           when 'sidekiq-redis-if-present'
-            errors << HealthCheck::SidekiqHealthCheck.check if defined?(::Sidekiq)
+            res[check] = HealthCheck::SidekiqHealthCheck.check if defined?(::Sidekiq)
           when 'redis-if-present'
-            errors << HealthCheck::RedisHealthCheck.check if defined?(::Redis)
+            res[check] = HealthCheck::RedisHealthCheck.check if defined?(::Redis)
           when 's3-if-present'
-            errors << HealthCheck::S3HealthCheck.check if defined?(::Aws)
+            res[check] = HealthCheck::S3HealthCheck.check if defined?(::Aws)
           when 'resque-redis'
-            errors << HealthCheck::ResqueHealthCheck.check
+            res[check] = HealthCheck::ResqueHealthCheck.check
           when 'sidekiq-redis'
-            errors << HealthCheck::SidekiqHealthCheck.check
+            res[check] = HealthCheck::SidekiqHealthCheck.check
           when 'redis'
-            errors << HealthCheck::RedisHealthCheck.check
+            res[check] = HealthCheck::RedisHealthCheck.check
           when 's3'
-            errors << HealthCheck::S3HealthCheck.check
+            res[check] = HealthCheck::S3HealthCheck.check
           when "standard"
-            errors << HealthCheck::Utils.process_checks(HealthCheck.standard_checks, called_from_middleware)
+            res[check] = HealthCheck::Utils.process_checks(HealthCheck.standard_checks, called_from_middleware)
           when "middleware"
-            errors << "Health check not called from middleware - probably not installed as middleware." unless called_from_middleware
+            unless called_from_middleware
+              res[check] = "Health check not called from middleware - probably not installed as middleware." 
+              res[:error] = true
+            end
           when "custom"
             HealthCheck.custom_checks.each do |name, list|
+              res[name] = []
               list.each do |custom_check|
-                errors << custom_check.call(self)
+                res[name] << custom_check.call(self)
               end
             end
           when "all", "full"
-            errors << HealthCheck::Utils.process_checks(HealthCheck.full_checks, called_from_middleware)
+            res[check] = HealthCheck::Utils.process_checks(HealthCheck.full_checks, called_from_middleware)
           else
             if HealthCheck.custom_checks.include? check
-               HealthCheck.custom_checks[check].each do |custom_check|
-                 errors << custom_check.call(self)
-               end
+              res[check] = []
+              HealthCheck.custom_checks[check].each do |custom_check|
+               res[check] << custom_check.call(self)
+              end
+              res
             else
-              return "invalid argument to health_test."
+              res = { error: true, msg: "invalid argument to health_test." }
             end
         end
+        res[:error] ||= res[check][:error] if res[check].present?
       end
-      return errors
+      return res
     rescue => e
-      return e.message
+      return { error: true, msg: e.message }
     end
 
     def self.db_migrate_path

@@ -58,8 +58,8 @@ module HealthCheck
   mattr_accessor :full_checks
   mattr_accessor :standard_checks
   self.custom_checks = { }
-  self.full_checks = ['database', 'migrations', 'custom', 'email', 'cache', 'redis-if-present', 'sidekiq-redis-if-present', 'resque-redis-if-present', 's3-if-present']
-  self.standard_checks = [ 'database', 'migrations', 'custom', 'emailconf' ]
+  self.full_checks = ['database', 'migrations', 'custom', 'email', 'cache', 'redis-if-present', 'sidekiq-redis-if-present', 'resque-redis-if-present', 's3-if-present', 'env']
+  self.standard_checks = [ 'database', 'migrations', 'custom', 'emailconf', 'env' ]
 
   # Middleware based checks
   mattr_accessor :middleware_checks
@@ -75,6 +75,11 @@ module HealthCheck
   # if your /health_check endpoint is open to the public internet
   mattr_accessor :include_error_in_response_body
   self.include_error_in_response_body = true
+
+
+  mattr_accessor :mandatory_env_keys
+  self.mandatory_env_keys = []
+
 
   def self.add_custom_check(name = 'custom', &block)
     custom_checks[name] ||= [ ]
@@ -97,5 +102,7 @@ require 'health_check/utils'
 require 'health_check/health_check_controller'
 require 'health_check/health_check_routes'
 require 'health_check/middleware_health_check'
+
+require 'health_check/env_check'
 
 # vi: sw=2 sm ai:

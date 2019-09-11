@@ -7,7 +7,8 @@ module HealthCheck
          raise "Wrong configuration. Missing 'resque' gem"
        end
       res = ::Resque.redis.ping
-      res == 'PONG' ? '' : "Resque.redis.ping returned #{res.inspect} instead of PONG"
+      return { error: !(res == 'PONG'), res: res.inspect }
+      # res == 'PONG' ? '' : "Resque.redis.ping returned #{res.inspect} instead of PONG"
      rescue Exception => e
        create_error 'resque-redis', e.message
      end

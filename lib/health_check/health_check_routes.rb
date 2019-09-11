@@ -8,6 +8,7 @@ module ActionDispatch::Routing
 
     def add_health_check_routes(prefix = nil)
       HealthCheck.uri = prefix if prefix
+      match "#{HealthCheck.uri}(/ping)(.:format)", :to => 'health_check/health_check#ping', via: [:get, :post], :defaults => { :format => 'txt' }
       match "#{HealthCheck.uri}(/:checks)(.:format)", :to => 'health_check/health_check#index', via: [:get, :post], :defaults => { :format => 'txt' }
     end
 
